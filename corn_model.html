@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玉米区域流通智能模型</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #030712; color: #e2e8f0; font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; overflow: hidden; }
+
+  /* === Header === */
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: linear-gradient(180deg, rgba(3,7,18,0.98) 0%, rgba(3,7,18,0.85) 100%);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    padding: 10px 24px 8px;
+    display: flex; align-items: center; justify-content: space-between;
+    backdrop-filter: blur(12px);
+  }
+  #header .title { font-size: 15px; font-weight: 600; color: #f8fafc; letter-spacing: 0.5px; }
+  #header .subtitle { font-size: 11px; color: #64748b; margin-top: 1px; }
+  #header-right { display: flex; align-items: center; gap: 16px; }
+
+  .year-tabs { display: flex; gap: 4px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 3px; }
+  .year-tab { padding: 5px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s; color: #64748b; border: none; background: transparent; }
+  .year-tab:hover { color: #cbd5e1; }
+  .year-tab.active { background: #334155; color: #f8fafc; }
+
+  /* === KPI Bar === */
+  #kpi-bar {
+    position: fixed; top: 68px; left: 0; right: 0; z-index: 90;
+    display: flex; justify-content: center; gap: 2px; padding: 0 24px;
+    pointer-events: none;
+  }
+  .kpi-card {
+    background: rgba(15,23,42,0.9); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; padding: 10px 20px; text-align: center; min-width: 130px;
+    pointer-events: auto; backdrop-filter: blur(8px);
+  }
+  .kpi-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .kpi-value { font-size: 22px; font-weight: 700; color: #f8fafc; line-height: 1.1; }
+  .kpi-unit { font-size: 11px; color: #64748b; font-weight: 400; margin-left: 2px; }
+  .kpi-card.fire .kpi-value { color: #fb923c; }
+  .kpi-card.pct .kpi-value { color: #4ade80; }
+  .kpi-card.demand .kpi-value { color: #60a5fa; }
+
+  /* === Left Panel === */
+  #left-panel {
+    position: fixed; left: 16px; top: 135px; bottom: 70px; z-index: 80;
+    width: 220px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 10px;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+  #left-panel::-webkit-scrollbar { width: 3px; }
+  #left-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  .panel-section {
+    background: rgba(15,23,42,0.92); border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(8px);
+  }
+  .panel-title { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; font-weight: 500; }
+  .planting-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 12px; }
+  .planting-row:last-child { border-bottom: none; }
+  .planting-row .region { color: #cbd5e1; font-weight: 500; }
+  .planting-row .val { color: #94a3b8; }
+  .planting-row .val strong { color: #e2e8f0; }
+  .planting-row .val.area { color: #94a3b8; }
+
+  /* === Right Panel === */
+  #right-panel {
+    position: fixed; right: 16px; top: 135px; bottom: 70px; z-index: 80;
+    width: 230px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 10px;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+  #right-panel::-webkit-scrollbar { width: 3px; }
+  #right-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  .demand-table { width: 100%; font-size: 11px; }
+  .demand-table th { color: #475569; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 6px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .demand-table td { padding: 5px 6px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #94a3b8; }
+  .demand-table tr:hover td { background: rgba(255,255,255,0.03); }
+  .demand-table .region-tag { color: #64748b; font-size: 10px; }
+  .demand-table .num { color: #e2e8f0; font-weight: 600; text-align: right; }
+
+  /* === Map === */
+  #map-container { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; }
+  #map { width: 100%; height: 100%; }
+
+  /* === Bottom filter === */
+  #bottom-bar {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 100;
+    display: flex; gap: 6px; padding: 6px 10px;
+    background: rgba(15,23,42,0.9); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; backdrop-filter: blur(12px);
+  }
+  .filter-btn {
+    padding: 5px 16px; border-radius: 6px; font-size: 12px; font-weight: 500;
+    cursor: pointer; border: none; background: transparent; color: #64748b;
+    transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+  }
+  .filter-btn:hover { color: #cbd5e1; }
+  .filter-btn.active { background: rgba(51,65,85,0.8); color: #f8fafc; }
+  .filter-btn.fire.active { background: rgba(251,146,60,0.2); color: #fb923c; }
+  .filter-btn.auto.active { background: rgba(56,189,248,0.2); color: #38bdf8; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+  /* === Chart containers === */
+  .chart-wrap { margin-top: 8px; }
+  .chart-wrap .chart { height: 140px; }
+  .price-chart .chart { height: 120px; }
+
+  /* === Tooltip === */
+  .map-tooltip { background: rgba(15,23,42,0.96) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 8px !important; padding: 10px 12px !important; font-size: 12px !important; color: #e2e8f0 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important; }
+
+  /* === Region label === */
+  .region-label { position: absolute; font-size: 10px; color: #94a3b8; pointer-events: none; font-weight: 500; white-space: nowrap; }
+
+  /* === Loading === */
+  #loading { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; background: #030712; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+  #loading .spinner { width: 36px; height: 36px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #60a5fa; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  #loading .text { font-size: 13px; color: #64748b; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="text">加载地图数据中…</div>
+</div>
+
+<div id="header">
+  <div>
+    <div class="title">🌽 玉米区域流通智能模型</div>
+    <div class="subtitle">北疆六大产区 · 外运流向 · 2023–2025三年数据</div>
+  </div>
+  <div id="header-right">
+    <div class="year-tabs">
+      <button class="year-tab" data-year="2023">2023</button>
+      <button class="year-tab active" data-year="2024">2024</button>
+      <button class="year-tab" data-year="2025">2025</button>
+    </div>
+  </div>
+</div>
+
+<div id="kpi-bar"></div>
+
+<div id="map-container">
+  <div id="map"></div>
+</div>
+
+<div id="left-panel">
+  <div class="panel-section" id="planting-section">
+    <div class="panel-title">🏡 2025年种植调研</div>
+    <div id="planting-list"></div>
+  </div>
+  <div class="panel-section">
+    <div class="panel-title">📊 月度发运趋势（万吨）</div>
+    <div class="chart-wrap"><div id="monthly-chart" class="chart"></div></div>
+  </div>
+  <div class="panel-section">
+    <div class="panel-title">🚂 运费走势（元/吨）</div>
+    <div class="chart-wrap"><div id="freight-chart" class="chart"></div></div>
+  </div>
+</div>
+
+<div id="right-panel">
+  <div class="panel-section">
+    <div class="panel-title">🏭 销区需求（2025）</div>
+    <div id="demand-list"></div>
+  </div>
+  <div class="panel-section">
+    <div class="panel-title">💰 销区玉米价格（元/吨）</div>
+    <div class="price-chart chart-wrap"><div id="price-chart" class="chart"></div></div>
+  </div>
+  <div class="panel-section">
+    <div class="panel-title">📈 产区三年总流出（万吨）</div>
+    <div id="prod-total-list"></div>
+  </div>
+  <div class="panel-section">
+    <div class="panel-title">🎯 销区三年总流入（万吨）</div>
+    <div id="dest-total-list"></div>
+  </div>
+</div>
+
+<div id="bottom-bar">
+  <button class="filter-btn active" data-filter="all">全部流向</button>
+  <button class="filter-btn fire" data-filter="fire">🔥 火运</button>
+  <button class="filter-btn auto" data-filter="auto">🚗 汽运</button>
+</div>
+
+<script>
+// ===================== DATA =====================
+const DATA = {
+  "prod_total": {"塔城": 307.4, "昌吉": 240.74, "伊犁": 89.42, "阿勒泰": 38.77, "奎屯": 43.34, "博州": 39.56},
+  "dest_total": {"四川": 507.68, "甘肃": 47.66, "重庆": 41.78, "云南": 44.91, "青海": 52.74, "宁夏": 41.17, "贵州": 23.29},
+  "flow_agg": {
+    "塔城→四川": 248.85, "昌吉→四川": 232.47, "伊犁→重庆": 28.82, "奎屯→四川": 23.13,
+    "伊犁→云南": 22.44, "博州→青海": 22.37, "塔城→云南": 20.54, "阿勒泰→青海": 20.19,
+    "伊犁→甘肃": 18.49, "奎屯→甘肃": 13.94, "塔城→贵州": 11.52, "博州→宁夏": 10.73,
+    "伊犁→宁夏": 10.40, "塔城→宁夏": 9.92, "阿勒泰→宁夏": 9.82, "塔城→青海": 9.00,
+    "塔城→重庆": 6.25, "博州→甘肃": 5.45, "奎屯→贵州": 5.06, "伊犁→贵州": 4.86,
+    "阿勒泰→甘肃": 4.47, "昌吉→甘肃": 3.99, "阿勒泰→重庆": 3.37, "伊犁→四川": 3.23,
+    "昌吉→重庆": 2.13, "昌吉→贵州": 1.85, "塔城→甘肃": 1.32, "奎屯→重庆": 1.21,
+    "伊犁→青海": 1.18, "博州→云南": 1.01, "阿勒泰→云南": 0.92, "昌吉→宁夏": 0.30
+  },
+  "kpi": {
+    "2023": {"year": 2023, "total_vol": 337.6, "fire_vol": 318.9, "fire_pct": 94.4, "total_demand": 98.0},
+    "2024": {"year": 2024, "total_vol": 385.4, "fire_vol": 369.2, "fire_pct": 95.8, "total_demand": 142.0},
+    "2025": {"year": 2025, "total_vol": 421.5, "fire_vol": 402.1, "fire_pct": 95.4, "total_demand": 240.0}
+  },
+  "monthly": {
+    "2023": [
+      {"month":1,"fire":38.07,"auto":2.43,"total":40.5,"fire_pct":94},{"month":2,"fire":31.06,"auto":2.70,"total":33.76,"fire_pct":92},
+      {"month":3,"fire":31.74,"auto":2.03,"total":33.77,"fire_pct":94},{"month":4,"fire":29.17,"auto":1.21,"total":30.38,"fire_pct":96},
+      {"month":5,"fire":19.46,"auto":0.81,"total":20.27,"fire_pct":96},{"month":6,"fire":17.65,"auto":0.50,"total":18.15,"fire_pct":97},
+      {"month":7,"fire":17.00,"auto":0.80,"total":17.80,"fire_pct":95},{"month":8,"fire":17.20,"auto":0.61,"total":17.81,"fire_pct":97},
+      {"month":9,"fire":31.70,"auto":1.40,"total":33.10,"fire_pct":96},{"month":10,"fire":31.60,"auto":1.50,"total":33.10,"fire_pct":95},
+      {"month":11,"fire":27.70,"auto":1.80,"total":29.50,"fire_pct":94},{"month":12,"fire":26.55,"auto":1.91,"total":28.46,"fire_pct":93}
+    ],
+    "2024": [
+      {"month":1,"fire":40.60,"auto":1.80,"total":42.40,"fire_pct":96},{"month":2,"fire":36.50,"auto":1.60,"total":38.10,"fire_pct":96},
+      {"month":3,"fire":36.80,"auto":1.20,"total":38.00,"fire_pct":97},{"month":4,"fire":34.20,"auto":0.90,"total":35.10,"fire_pct":97},
+      {"month":5,"fire":23.50,"auto":0.60,"total":24.10,"fire_pct":97},{"month":6,"fire":20.10,"auto":0.70,"total":20.80,"fire_pct":97},
+      {"month":7,"fire":19.80,"auto":0.90,"total":20.70,"fire_pct":96},{"month":8,"fire":21.30,"auto":0.80,"total":22.10,"fire_pct":96},
+      {"month":9,"fire":35.50,"auto":1.50,"total":37.00,"fire_pct":96},{"month":10,"fire":36.80,"auto":1.70,"total":38.50,"fire_pct":96},
+      {"month":11,"fire":30.50,"auto":2.00,"total":32.50,"fire_pct":94},{"month":12,"fire":33.80,"auto":2.50,"total":36.30,"fire_pct":93}
+    ],
+    "2025": [
+      {"month":1,"fire":44.70,"auto":2.20,"total":46.90,"fire_pct":95},{"month":2,"fire":41.20,"auto":1.90,"total":43.10,"fire_pct":96},
+      {"month":3,"fire":40.50,"auto":1.50,"total":42.00,"fire_pct":96},{"month":4,"fire":38.00,"auto":1.20,"total":39.20,"fire_pct":97},
+      {"month":5,"fire":26.50,"auto":0.80,"total":27.30,"fire_pct":97},{"month":6,"fire":22.50,"auto":0.70,"total":23.20,"fire_pct":97},
+      {"month":7,"fire":21.80,"auto":1.00,"total":22.80,"fire_pct":96},{"month":8,"fire":23.20,"auto":0.90,"total":24.10,"fire_pct":96},
+      {"month":9,"fire":38.50,"auto":1.80,"total":40.30,"fire_pct":96},{"month":10,"fire":40.00,"auto":2.00,"total":42.00,"fire_pct":95},
+      {"month":11,"fire":33.50,"auto":2.30,"total":35.80,"fire_pct":94},{"month":12,"fire":31.70,"auto":3.20,"total":34.90,"fire_pct":91}
+    ]
+  },
+  "planting": {
+    "昌吉": {"area": 2136373, "output": 215.07, "avg_cost": 1334.7},
+    "博乐": {"area": 872754, "output": 91.21, "avg_cost": 1696.0},
+    "阿勒泰": {"area": 3333494, "output": 282.32, "avg_cost": 719.0},
+    "塔城": {"area": 2378319, "output": 260.28, "avg_cost": 1416.5},
+    "伊犁": {"area": 3338436, "output": 320.71, "avg_cost": 1480.9},
+    "奇台": {"area": 321321, "output": 33.71, "avg_cost": 1293.9}
+  },
+  "demand": [
+    {"year":2025,"region":"四川","city":"成都/广汉","demand":80,"price":2450,"freight":385,"cif":2870,"enterprises":"新希望六和、通威股份、铁骑力士、傲农生物"},
+    {"year":2025,"region":"甘肃","city":"兰州/武威","demand":50,"price":2380,"freight":265,"cif":2675,"enterprises":"莫高股份、庄园牧场、甘肃农垦"},
+    {"year":2025,"region":"陕西","city":"西安/宝鸡","demand":30,"price":2400,"freight":310,"cif":2742,"enterprises":"石羊农业、陕西粮农"},
+    {"year":2025,"region":"云南","city":"昆明/曲靖","demand":25,"price":2520,"freight":340,"cif":2920,"enterprises":"云南白药、唐人神"},
+    {"year":2025,"region":"贵州","city":"贵阳/遵义","demand":20,"price":2500,"freight":320,"cif":2850,"enterprises":"贵州六和"},
+    {"year":2025,"region":"重庆","city":"重庆","demand":20,"price":2480,"freight":300,"cif":2805,"enterprises":"重庆饲料协会"},
+    {"year":2025,"region":"青海","city":"西宁","demand":15,"price":2350,"freight":280,"cif":2660,"enterprises":"青海碱业"},
+    {"year":2025,"region":"宁夏","city":"银川","demand":10,"price":2320,"freight":260,"cif":2610,"enterprises":"宁夏农垦"}
+  ],
+  "prices": {
+    "2025": {
+      1:{"四川":2280,"云南":2450,"重庆":2230,"贵州":2380},
+      2:{"四川":2295,"云南":2465,"重庆":2250,"贵州":2395},
+      3:{"四川":2310,"云南":2480,"重庆":2265,"贵州":2410},
+      4:{"四川":2300,"云南":2470,"重庆":2245,"贵州":2400},
+      5:{"四川":2285,"云南":2455,"重庆":2235,"贵州":2385},
+      6:{"四川":2300,"云南":2470,"重庆":2250,"贵州":2400},
+      7:{"四川":2330,"云南":2500,"重庆":2280,"贵州":2430},
+      8:{"四川":2360,"云南":2525,"重庆":2310,"贵州":2460},
+      9:{"四川":2380,"云南":2545,"重庆":2325,"贵州":2480},
+      10:{"四川":2400,"云南":2570,"重庆":2340,"贵州":2495},
+      11:{"四川":2409,"云南":2583,"重庆":2345,"贵州":2482},
+      12:{"四川":2428,"云南":2611,"重庆":2349,"贵州":2499}
+    }
+  }
+};
+
+// ===================== CONFIG =====================
+const ORIGIN_COORDS = {
+  '塔城': [82.98, 46.74], '昌吉': [87.3, 44.0], '伊犁': [81.32, 43.92],
+  '阿勒泰': [88.13, 47.85], '奎屯': [84.9, 44.42], '博州': [82.07, 44.9],
+};
+const DEST_COORDS = {
+  '四川': [104.06, 30.67], '重庆': [106.55, 29.57], '甘肃': [103.82, 36.06],
+  '云南': [102.71, 25.04], '贵州': [106.71, 26.57], '青海': [101.78, 36.62], '宁夏': [106.28, 38.47],
+};
+const ORIGIN_COLOR = '#f97316';
+const DEST_COLOR = '#3b82f6';
+const FIRE_COLOR = '#f97316';
+const AUTO_COLOR = '#38bdf8';
+
+// ===================== STATE =====================
+let currentYear = 2024;
+let currentFilter = 'all';
+let mapChart = null;
+let echartsLoaded = false;
+
+// ===================== INIT =====================
+async function init() {
+  // Load ECharts
+  await loadScript('https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js');
+
+  // Load China map GeoJSON
+  try {
+    const resp = await fetch('china.json');
+    const chinaJson = await resp.json();
+    echarts.registerMap('china', chinaJson);
+  } catch(e) {
+    console.warn('china.json load failed, trying CDN:', e);
+    try {
+      const resp = await fetch('https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json');
+      const chinaJson = await resp.json();
+      echarts.registerMap('china', chinaJson);
+    } catch(e2) {
+      console.error('Map load failed:', e2);
+      document.querySelector('.text').textContent = '地图加载失败，请检查网络';
+      return;
+    }
+  }
+
+  echartsLoaded = true;
+  document.getElementById('loading').style.display = 'none';
+  initMap();
+  renderUI();
+  setupEventListeners();
+}
+
+// ===================== LOAD SCRIPT =====================
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// ===================== MAP =====================
+function initMap() {
+  mapChart = echarts.init(document.getElementById('map'), null, { renderer: 'canvas' });
+  updateMap();
+
+  window.addEventListener('resize', () => mapChart && mapChart.resize());
+}
+
+function getFlowData(filter) {
+  const data = DATA.flow_agg;
+  const fireData = {};
+  const autoData = {};
+  const allFlows = {};
+
+  for (const [key, vol] of Object.entries(data)) {
+    const [prod, dest] = key.split('→');
+    if (!ORIGIN_COORDS[prod] || !DEST_COORDS[dest]) continue;
+    allFlows[key] = vol;
+    // 估算：火运占94%，汽运6%
+    if (filter === 'fire' || filter === 'all') fireData[key] = vol * 0.94;
+    if (filter === 'auto' || filter === 'all') autoData[key] = vol * 0.06;
+  }
+
+  return { fireData, autoData, allFlows };
+}
+
+function updateMap() {
+  if (!mapChart || !echartsLoaded) return;
+
+  const { fireData, autoData, allFlows } = getFlowData(currentFilter);
+
+  // 流向线
+  const fireLines = Object.entries(fireData).map(([key, vol]) => {
+    const [prod, dest] = key.split('→');
+    return { coords: [ORIGIN_COORDS[prod], DEST_COORDS[dest]], value: vol };
+  });
+  const autoLines = Object.entries(autoData).map(([key, vol]) => {
+    const [prod, dest] = key.split('→');
+    return { coords: [ORIGIN_COORDS[prod], DEST_COORDS[dest]], value: vol };
+  });
+
+  // 产区散点
+  const originScatter = Object.entries(DATA.prod_total).map(([name, vol]) => ({
+    name, value: [...ORIGIN_COORDS[name], vol]
+  }));
+
+  // 销区散点
+  const destScatter = Object.entries(DATA.dest_total).map(([name, vol]) => ({
+    name, value: [...DEST_COORDS[name], vol]
+  }));
+
+  const maxVol = Math.max(...Object.values(DATA.prod_total));
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(15,23,42,0.97)',
+      borderColor: 'rgba(255,255,255,0.15)',
+      borderWidth: 1,
+      borderRadius: 8,
+      textStyle: { color: '#e2e8f0', fontSize: 12 },
+      padding: [10, 14],
+      formatter(params) {
+        if (params.seriesName === '产区') {
+          return `<div style="font-weight:600;color:#f8fafc;margin-bottom:2px">${params.data.name}</div>
+            <div style="color:#94a3b8">三年总流出：<span style="color:#f97316;font-weight:600">${DATA.prod_total[params.data.name]}</span> 万吨</div>`;
+        }
+        if (params.seriesName === '销区') {
+          return `<div style="font-weight:600;color:#f8fafc;margin-bottom:2px">${params.data.name}</div>
+            <div style="color:#94a3b8">三年总流入：<span style="color:#3b82f6;font-weight:600">${DATA.dest_total[params.data.name]}</span> 万吨</div>`;
+        }
+        if (params.seriesName === '火运流向') {
+          const [prod, dest] = params.data.name.split('→');
+          return `<div style="font-weight:600;color:#f97316;margin-bottom:3px">🔥 ${prod} → ${dest}</div>
+            <div style="color:#94a3b8">火运约 <span style="color:#f97316;font-weight:600">${(params.data.value * 0.94).toFixed(1)}</span> 万吨</div>
+            <div style="color:#64748b;font-size:10px">占流向总量 <span style="color:#94a3b8">${((params.data.value / DATA.flow_agg[params.data.name]) * 94).toFixed(0)}%</span></div>`;
+        }
+        return '';
+      }
+    },
+    geo: {
+      map: 'china',
+      roam: true,
+      zoom: 1.1,
+      center: [100, 38],
+      itemStyle: {
+        areaColor: '#0f172a',
+        borderColor: 'rgba(59,130,246,0.15)',
+        borderWidth: 1,
+      },
+      emphasis: {
+        itemStyle: { areaColor: '#1e293b' },
+        label: { show: false }
+      },
+      select: { disabled: true },
+      silent: true,
+    },
+    series: [
+      // 火运流向
+      {
+        name: '火运流向', type: 'lines', coordinateSystem: 'geo',
+        zlevel: 2, symbol: ['none', 'arrow'],
+        symbolSize: 8,
+        effect: { show: true, period: 4, trailLength: 0.3, symbol: 'circle', symbolSize: 5, color: FIRE_COLOR },
+        lineStyle: { color: FIRE_COLOR, width: 1.5, opacity: 0.6, curveness: 0.15 },
+        data: fireLines.map(d => ({ ...d, name: `${d.coords[0][0] === 82.98 ? '塔城' : d.coords[0][0] === 87.3 ? '昌吉' : d.coords[0][0] === 81.32 ? '伊犁' : d.coords[0][0] === 88.13 ? '阿勒泰' : d.coords[0][0] === 84.9 ? '奎屯' : '博州'}→${Object.entries(DEST_COORDS).find(([,v])=>v[0]===d.coords[1][0]&&v[1]===d.coords[1][1])?.[0] || '销区'}`, value: d.value })),
+      },
+      // 汽运流向
+      {
+        name: '汽运流向', type: 'lines', coordinateSystem: 'geo',
+        zlevel: 1, symbol: ['none', 'none'],
+        effect: { show: false },
+        lineStyle: { color: AUTO_COLOR, width: 1, opacity: 0.3, type: 'dashed', curveness: 0.15 },
+        data: autoLines,
+      },
+      // 产区散点
+      {
+        name: '产区', type: 'effectScatter', coordinateSystem: 'geo',
+        zlevel: 3, rippleEffect: { brushType: 'stroke', scale: 3 },
+        symbolSize(val, params) { return 14 + (params.data.value[2] / maxVol) * 20; },
+        itemStyle: { color: ORIGIN_COLOR, shadowBlur: 10, shadowColor: 'rgba(249,115,22,0.5)' },
+        data: originScatter,
+        label: {
+          show: true, position: 'right', formatter: '{b}',
+          fontSize: 11, color: '#fcd34d', fontWeight: 600,
+          backgroundColor: 'rgba(3,7,18,0.7)', borderRadius: 3, padding: [2, 5],
+        },
+      },
+      // 销区散点
+      {
+        name: '销区', type: 'effectScatter', coordinateSystem: 'geo',
+        zlevel: 3, rippleEffect: { brushType: 'stroke', scale: 3 },
+        symbolSize(val, params) { return 12 + (params.data.value[2] / Math.max(...Object.values(DATA.dest_total))) * 22; },
+        itemStyle: { color: DEST_COLOR, shadowBlur: 10, shadowColor: 'rgba(59,130,246,0.4)' },
+        data: destScatter,
+        label: {
+          show: true, position: 'right', formatter: '{b}',
+          fontSize: 11, color: '#93c5fd', fontWeight: 500,
+          backgroundColor: 'rgba(3,7,18,0.7)', borderRadius: 3, padding: [2, 5],
+        },
+      },
+    ],
+  };
+
+  // 重新构建流向线的name
+  const flowKeyMap = Object.keys(DATA.flow_agg);
+  option.series[0].data = fireLines.map((d, i) => {
+    const prod = Object.entries(ORIGIN_COORDS).find(([,v])=>Math.abs(v[0]-d.coords[0][0])<0.5&&Math.abs(v[1]-d.coords[0][1])<0.5)?.[0] || '产区';
+    const dest = Object.entries(DEST_COORDS).find(([,v])=>Math.abs(v[0]-d.coords[1][0])<0.5&&Math.abs(v[1]-d.coords[1][1])<0.5)?.[0] || '销区';
+    const key = `${prod}→${dest}`;
+    return { ...d, name: key, value: DATA.flow_agg[key] || d.value };
+  });
+
+  mapChart.setOption(option, true);
+}
+
+// ===================== KPI =====================
+function renderKPI() {
+  const kpi = DATA.kpi[String(currentYear)];
+  const bar = document.getElementById('kpi-bar');
+  bar.innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">全年外运总量</div><div class="kpi-value">${kpi.total_vol}<span class="kpi-unit">万吨</span></div></div>
+    <div class="kpi-card fire"><div class="kpi-label">铁路发运量</div><div class="kpi-value">${kpi.fire_vol}<span class="kpi-unit">万吨</span></div></div>
+    <div class="kpi-card pct"><div class="kpi-label">铁路占比</div><div class="kpi-value">${kpi.fire_pct}<span class="kpi-unit">%</span></div></div>
+    <div class="kpi-card demand"><div class="kpi-label">销区需求</div><div class="kpi-value">${kpi.total_demand}<span class="kpi-unit">万吨</span></div></div>
+  `;
+}
+
+// ===================== LEFT PANEL =====================
+function renderLeftPanel() {
+  // 种植调研
+  const planting = DATA.planting;
+  const plantingList = document.getElementById('planting-list');
+  const sorted = Object.entries(planting).sort((a, b) => b[1].output - a[1].output);
+  plantingList.innerHTML = sorted.map(([region, d]) => `
+    <div class="planting-row">
+      <span class="region">${region}</span>
+      <span class="val">
+        <strong>${d.output.toFixed(0)}</strong>万吨
+        <span class="area"> / ${(d.area/10000).toFixed(0)}万亩</span>
+      </span>
+    </div>
+  `).join('');
+
+  // 成本小记
+  const avgCosts = sorted.map(([r, d]) => `${r}均${d.avg_cost}元/亩`);
+}
+
+// ===================== RIGHT PANEL =====================
+function renderRightPanel() {
+  // 销区需求
+  const demand2025 = DATA.demand.filter(d => d.year === 2025);
+  const demandList = document.getElementById('demand-list');
+  demandList.innerHTML = `<table class="demand-table">
+    <thead><tr><th>销区</th><th style="text-align:right">万吨</th><th style="text-align:right">到岸价</th></tr></thead>
+    <tbody>
+      ${demand2025.map(d => `
+        <tr>
+          <td class="region-tag">${d.region}</td>
+          <td class="num">${d.demand}</td>
+          <td class="num">${d.cif}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>`;
+
+  // 产区/销区汇总
+  const prodList = document.getElementById('prod-total-list');
+  const sortedProd = Object.entries(DATA.prod_total).sort((a,b)=>b[1]-a[1]);
+  prodList.innerHTML = sortedProd.map(([r, v]) => `
+    <div class="planting-row">
+      <span class="region">${r}</span>
+      <span class="val" style="color:#f97316"><strong>${v}</strong> 万吨</span>
+    </div>
+  `).join('');
+
+  const destList = document.getElementById('dest-total-list');
+  const sortedDest = Object.entries(DATA.dest_total).sort((a,b)=>b[1]-a[1]);
+  destList.innerHTML = sortedDest.map(([r, v]) => `
+    <div class="planting-row">
+      <span class="region">${r}</span>
+      <span class="val" style="color:#3b82f6"><strong>${v}</strong> 万吨</span>
+    </div>
+  `).join('');
+}
+
+// ===================== CHARTS =====================
+function renderCharts() {
+  renderMonthlyChart();
+  renderFreightChart();
+  renderPriceChart();
+}
+
+function renderMonthlyChart() {
+  const el = document.getElementById('monthly-chart');
+  if (!el) return;
+  const chart = echarts.getInstanceByDom(el) || echarts.init(el);
+  const mData = DATA.monthly[String(currentYear)] || [];
+  const months = mData.map(d => `${d.month}月`);
+  const fireData = mData.map(d => d.fire);
+  const autoData = mData.map(d => d.auto);
+
+  chart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 8, bottom: 20, left: 32, right: 8 },
+    xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, axisLabel: { color: '#475569', fontSize: 9 }, splitLine: { show: false }, axisTick: { show: false } },
+    yAxis: { type: 'value', axisLine: { show: false }, axisLabel: { color: '#475569', fontSize: 9 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }, axisTick: { show: false } },
+    series: [
+      { name: '火运', type: 'bar', stack: 't', data: fireData, itemStyle: { color: FIRE_COLOR, borderRadius: [0,0,0,0] }, barWidth: '55%' },
+      { name: '汽运', type: 'bar', stack: 't', data: autoData, itemStyle: { color: AUTO_COLOR, borderRadius: [2,2,0,0] } },
+    ],
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,0.97)', borderColor: 'rgba(255,255,255,0.15)', textStyle: { color: '#e2e8f0', fontSize: 11 }, axisPointer: { type: 'shadow' } },
+  });
+}
+
+function renderFreightChart() {
+  const el = document.getElementById('freight-chart');
+  if (!el) return;
+  const chart = echarts.getInstanceByDom(el) || echarts.init(el);
+  const yearData = DATA.prices[String(currentYear)] || {};
+  const months = Array.from({length:12}, (_,i) => `${i+1}月`);
+  const priceData = months.map((m, i) => {
+    const key = i+1;
+    return yearData[key] ? yearData[key]['四川'] : null;
+  });
+
+  chart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 8, bottom: 20, left: 40, right: 8 },
+    xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, axisLabel: { color: '#475569', fontSize: 9 }, splitLine: { show: false }, axisTick: { show: false } },
+    yAxis: { type: 'value', axisLine: { show: false }, axisLabel: { color: '#475569', fontSize: 9, formatter: v => v.toFixed(0) }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }, axisTick: { show: false } },
+    series: [{ type: 'line', data: priceData, smooth: true, symbol: 'circle', symbolSize: 4, lineStyle: { color: '#fcd34d', width: 2 }, itemStyle: { color: '#fcd34d' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(252,211,77,0.25)' }, { offset: 1, color: 'rgba(252,211,77,0)' }] } } }],
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,0.97)', borderColor: 'rgba(255,255,255,0.15)', textStyle: { color: '#e2e8f0', fontSize: 11 }, formatter: params => params[0].axisValue + '<br/>四川: <b>' + params[0].value + '</b> 元/吨' },
+  });
+}
+
+function renderPriceChart() {
+  const el = document.getElementById('price-chart');
+  if (!el) return;
+  const chart = echarts.getInstanceByDom(el) || echarts.init(el);
+  const yearData = DATA.prices[String(currentYear)] || {};
+  const months = Array.from({length:12},(_,i) => `${i+1}月`);
+  const regions = ['四川', '云南', '重庆', '贵州'];
+  const colors = ['#f97316', '#a855f7', '#3b82f6', '#22c55e'];
+
+  chart.setOption({
+    backgroundColor: 'transparent',
+    grid: { top: 8, bottom: 20, left: 38, right: 8 },
+    legend: { show: false },
+    xAxis: { type: 'category', data: months, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, axisLabel: { color: '#475569', fontSize: 9 }, splitLine: { show: false }, axisTick: { show: false } },
+    yAxis: { type: 'value', axisLine: { show: false }, axisLabel: { color: '#475569', fontSize: 9, formatter: v => v.toFixed(0) }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }, axisTick: { show: false } },
+    series: regions.map((region, i) => ({
+      name: region, type: 'line', data: months.map((_, idx) => yearData[idx+1] ? yearData[idx+1][region] : null),
+      smooth: true, symbol: 'none', lineStyle: { color: colors[i], width: 1.5, opacity: 0.8 },
+    })),
+    tooltip: {
+      trigger: 'axis', backgroundColor: 'rgba(15,23,42,0.97)', borderColor: 'rgba(255,255,255,0.15)', textStyle: { color: '#e2e8f0', fontSize: 11 },
+      formatter(params) {
+        let s = `<b>${params[0].axisValue}</b><br/>`;
+        params.forEach(p => { if(p.value != null) s += `<span style="color:${p.color}">●</span> ${p.seriesName}: <b>${p.value}</b><br/>`; });
+        return s;
+      }
+    },
+  });
+}
+
+// ===================== EVENT LISTENERS =====================
+function setupEventListeners() {
+  // Year tabs
+  document.querySelectorAll('.year-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.year-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentYear = parseInt(btn.dataset.year);
+      renderKPI();
+      renderLeftPanel();
+      renderCharts();
+    });
+  });
+
+  // Filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      updateMap();
+    });
+  });
+}
+
+// ===================== RENDER ALL =====================
+function renderUI() {
+  renderKPI();
+  renderLeftPanel();
+  renderRightPanel();
+  renderCharts();
+}
+
+// ===================== START =====================
+init();
+</script>
+</body>
+</html>
